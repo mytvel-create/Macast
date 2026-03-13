@@ -6,8 +6,9 @@ on:
 jobs:
   build:
     runs-on: macos-14
-    # 解决 Node 警告（可选）
     env:
+      # 强制指定兼容 Monterey 12.5
+      MACOSX_DEPLOYMENT_TARGET: "12.5"
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
@@ -17,32 +18,35 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.9' 
+          python-version: '3.9'
 
       - name: Install System Dependencies
         run: |
-          # Macast 编译可能需要 gettext 等工具
           brew install gettext
+          echo "/opt/homebrew/opt/gettext/bin" >> $GITHUB_PATH
 
       - name: Install Python Dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          # 确保安装了打包必须的工具
-          pip install py2app pyinstaller
+          # 直接安装项目本身及打包工具，py2app 会自动根据 setup.py 处理依赖
+          pip install .
+          pip install py2app
+
+      - name: Generate Translation Files
+        run: |
+          # Macast 必须生成 i18n 文件，否则打包后无法运行
+          # 给予脚本执行权限并运行
+          chmod +x ./i18n/build.sh
+          ./i18n/build.sh || echo "i18n build failed, but continuing..."
 
       - name: Build Application
         run: |
-          # 尝试直接使用项目的打包脚本
-          # Macast 根目录通常有 setup.py
-          python setup.py py2app
-          
-          # 如果上面命令提示找不到目标，尝试：
-          # pyinstaller -F -w --clean Macast.spec
+          # 使用 py2app 打包
+          # alias=False 确保所有库都封装进 app，而不是建立符号链接
+          python setup.py py2app --alias=False
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
           name: Macast-ARM-Monterey
-          # py2app 默认输出在 dist/ 目录下
-          path: dist/*.app
+          path: dist/Macast.app

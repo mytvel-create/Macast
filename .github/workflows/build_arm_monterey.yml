@@ -7,7 +7,6 @@ jobs:
   build:
     runs-on: macos-14
     env:
-      # 强制指定兼容 Monterey 12.5
       MACOSX_DEPLOYMENT_TARGET: "12.5"
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
@@ -22,31 +21,42 @@ jobs:
 
       - name: Install System Dependencies
         run: |
-          brew install gettext
+          brew install gettext dmgbuild
           echo "/opt/homebrew/opt/gettext/bin" >> $GITHUB_PATH
 
       - name: Install Python Dependencies
         run: |
           python -m pip install --upgrade pip
-          # 直接安装项目本身及打包工具，py2app 会自动根据 setup.py 处理依赖
           pip install .
-          pip install py2app
+          pip install py2app pyinstaller
 
       - name: Generate Translation Files
         run: |
-          # Macast 必须生成 i18n 文件，否则打包后无法运行
-          # 给予脚本执行权限并运行
-          chmod +x ./i18n/build.sh
-          ./i18n/build.sh || echo "i18n build failed, but continuing..."
+          # 自动定位 i18n 目录并生成编译后的 .mo 文件
+          I18N_DIR=$(find . -name i18n -type d | head -n 1)
+          echo "Found i18n directory at: $I18N_DIR"
+          # 如果有 build.sh 则执行，否则手动调用 msgfmt 编译所有 .po
+          if [ -f "$I18N_DIR/build.sh" ]; then
+            chmod +x "$I18N_DIR/build.sh"
+            cd "$I18N_DIR" && ./build.sh && cd -
+          else
+            find "$I18N_DIR" -name "*.po" -exec msgfmt {} -o {}.mo \;
+            # 将 .po.mo 重命名为正确的 .mo
+            find "$I18N_DIR" -name "*.po.mo" -exec sh -c 'mv "$1" "${1%.po.mo}.mo"' _ {} \;
+          fi
 
       - name: Build Application
         run: |
-          # 使用 py2app 打包
-          # alias=False 确保所有库都封装进 app，而不是建立符号链接
-          python setup.py py2app --alias=False
+          # 执行打包
+          python setup.py py2app --no-alias
+
+      - name: Create DMG
+        run: |
+          # 简单粗暴地将 .app 封装成 .dmg
+          hdiutil create -format UDZO -srcfolder dist/Macast.app Macast-ARM-Monterey.dmg
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Macast-ARM-Monterey
-          path: dist/Macast.app
+          name: Macast-ARM-Monterey-Package
+          path: Macast-ARM-Monterey.dmg

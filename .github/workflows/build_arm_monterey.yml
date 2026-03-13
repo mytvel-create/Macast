@@ -1,4 +1,4 @@
-name: Build Macast ARM Monterey (PyInstaller)
+name: Build Macast ARM Monterey (PyInstaller Final)
 
 on:
   workflow_dispatch:
@@ -15,34 +15,29 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: python-setup@v5
         with:
           python-version: '3.9'
 
       - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
-          # 直接安装项目及其依赖，忽略 setup.py 的元数据限制
+          # 必须安装这些才能启动 Macast
           pip install .
-          # 安装 PyInstaller，比 py2app 更适合这种复杂项目
-          pip install pyinstaller
+          pip install pyinstaller PyQt5 qasync
 
       - name: Build with PyInstaller
         run: |
-          # 假设 Macast 的入口文件是 macast/__main__.py 或 main.py
-          # 如果不确定，通常是 macast.app 的启动脚本
-          # 我们先尝试寻找入口文件
-          ENTRY_POINT=$(find . -name "main.py" -o -name "__main__.py" | head -n 1)
-          echo "Found entry point: $ENTRY_POINT"
-          
-          # 使用 PyInstaller 打包
-          # -w 表示窗口模式（不弹黑窗口）
-          # --onefile 打包成单个可执行文件
-          pyinstaller --noconfirm --windowed --name "Macast" "$ENTRY_POINT"
+          # 既然 find 没找到，我们直接指定项目根目录下的 run.py
+          # 同时添加 --collect-all 来确保 PyQt5 等复杂库能被正确打包
+          pyinstaller --noconfirm --windowed --name "Macast" \
+            --collect-all PyQt5 \
+            --collect-all qasync \
+            run.py
 
-      - name: Package to DMG
+      - name: Create DMG
         run: |
-          # PyInstaller 生成的目录在 dist/Macast/
+          # PyInstaller 生成目录通常是 dist/Macast
           hdiutil create -volname "Macast-ARM" -srcfolder dist/Macast -ov -format UDZO Macast-ARM-Monterey.dmg
 
       - name: Upload Artifact

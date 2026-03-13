@@ -1,4 +1,4 @@
-name: Build Macast ARM Monterey
+name: Build Macast ARM Monterey (PyInstaller)
 
 on:
   workflow_dispatch:
@@ -19,35 +19,31 @@ jobs:
         with:
           python-version: '3.9'
 
-      - name: Install System Dependencies
-        run: |
-          brew install gettext
-          echo "/opt/homebrew/opt/gettext/bin" >> $GITHUB_PATH
-
-      - name: Fix Environment & Dependencies
+      - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
-          # 关键点：强制降级 setuptools 以兼容旧版 setup.py 写法
-          pip install "setuptools<60.0.0"
-          pip install py2app
-          # 安装项目自身
+          # 直接安装项目及其依赖，忽略 setup.py 的元数据限制
           pip install .
+          # 安装 PyInstaller，比 py2app 更适合这种复杂项目
+          pip install pyinstaller
 
-      - name: Build Application
+      - name: Build with PyInstaller
         run: |
-          # 显式清理之前的构建产物，防止环境污染
-          rm -rf build dist
-          python setup.py py2app
+          # 假设 Macast 的入口文件是 macast/__main__.py 或 main.py
+          # 如果不确定，通常是 macast.app 的启动脚本
+          # 我们先尝试寻找入口文件
+          ENTRY_POINT=$(find . -name "main.py" -o -name "__main__.py" | head -n 1)
+          echo "Found entry point: $ENTRY_POINT"
+          
+          # 使用 PyInstaller 打包
+          # -w 表示窗口模式（不弹黑窗口）
+          # --onefile 打包成单个可执行文件
+          pyinstaller --noconfirm --windowed --name "Macast" "$ENTRY_POINT"
 
-      - name: Create DMG
+      - name: Package to DMG
         run: |
-          # 确保路径存在并打包
-          if [ -d "dist/Macast.app" ]; then
-            hdiutil create -volname "Macast-ARM" -srcfolder dist/Macast.app -ov -format UDZO Macast-ARM-Monterey.dmg
-          else
-            echo "Build failed: Macast.app not found."
-            exit 1
-          fi
+          # PyInstaller 生成的目录在 dist/Macast/
+          hdiutil create -volname "Macast-ARM" -srcfolder dist/Macast -ov -format UDZO Macast-ARM-Monterey.dmg
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4

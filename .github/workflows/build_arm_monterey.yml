@@ -24,44 +24,28 @@ jobs:
           brew install gettext
           echo "/opt/homebrew/opt/gettext/bin" >> $GITHUB_PATH
 
-      - name: Install Python Dependencies
+      - name: Fix Environment & Dependencies
         run: |
           python -m pip install --upgrade pip
-          # 明确安装打包工具
+          # 关键点：强制降级 setuptools 以兼容旧版 setup.py 写法
+          pip install "setuptools<60.0.0"
           pip install py2app
-          # 安装项目依赖
+          # 安装项目自身
           pip install .
-
-      - name: Generate Translation Files
-        run: |
-          # 精准定位并生成 .mo 文件
-          I18N_DIR=$(find . -name i18n -type d | head -n 1)
-          if [ -z "$I18N_DIR" ]; then
-            echo "I18N directory not found, checking subdirectories..."
-            I18N_DIR="./macast/i18n"
-          fi
-          
-          if [ -d "$I18N_DIR" ]; then
-            echo "Processing translations in $I18N_DIR"
-            find "$I18N_DIR" -name "*.po" -exec msgfmt {} -o {}.mo \;
-            # 确保生成的二进制文件命名符合程序调用预期
-            find "$I18N_DIR" -name "*.po.mo" -exec sh -c 'mv "$1" "${1%.po.mo}.mo"' _ {} \;
-          fi
 
       - name: Build Application
         run: |
-          # 使用最标准的 py2app 调用方式
-          # 不加 --alias 参数默认就是自包含（Standalone）模式
+          # 显式清理之前的构建产物，防止环境污染
+          rm -rf build dist
           python setup.py py2app
 
       - name: Create DMG
         run: |
-          # 检查生成结果并打包
+          # 确保路径存在并打包
           if [ -d "dist/Macast.app" ]; then
             hdiutil create -volname "Macast-ARM" -srcfolder dist/Macast.app -ov -format UDZO Macast-ARM-Monterey.dmg
           else
-            echo "Error: Macast.app not found in dist/"
-            ls -R dist/
+            echo "Build failed: Macast.app not found."
             exit 1
           fi
 
